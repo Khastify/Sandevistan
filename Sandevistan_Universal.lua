@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V12 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
+-- KHASTIFY SANDEVISTAN V14 - 30-FIGURE SEAMLESS RAINBOW + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -138,19 +138,19 @@ end
 -- Each solid-color snapshot keeps its own fixed shade. Traverse the requested sequence
 -- GREEN -> BLUE -> PURPLE -> RED -> ORANGE -> YELLOW -> GREEN, then repeat.
 local RAINBOW_STOPS = {
-    Color3.fromRGB(150, 235, 174), -- pastel green (always first)
-    Color3.fromRGB(150, 196, 245), -- pastel blue
-    Color3.fromRGB(196, 164, 242), -- pastel purple
-    Color3.fromRGB(248, 159, 174), -- pastel red / rose
-    Color3.fromRGB(250, 195, 151), -- pastel orange / peach
-    Color3.fromRGB(251, 239, 165), -- pastel yellow
-    Color3.fromRGB(150, 235, 174), -- back to pastel green
+    Color3.fromRGB(30, 255, 75), -- green (always first)
+    Color3.fromRGB(25, 110, 255), -- blue
+    Color3.fromRGB(155, 50, 255), -- purple
+    Color3.fromRGB(255, 45, 70), -- red
+    Color3.fromRGB(255, 135, 30), -- orange
+    Color3.fromRGB(255, 240, 45), -- yellow
+    Color3.fromRGB(30, 255, 75), -- back to green
 }
-local SHADES_PER_TRANSITION = 24
+local SHADES_PER_TRANSITION = 5 -- 6 transitions x 5 snapshots = 30 unique colors per loop
 local function nextGhostColor(ownerId)
     local sequence = ghostSequences[ownerId] or 0
     ghostSequences[ownerId] = sequence + 1
-    local total = (#RAINBOW_STOPS - 1) * SHADES_PER_TRANSITION
+    local total = 30 -- Figure 1 is green; figure 30 blends toward green; figure 31 is green again.
     local step = sequence % total
     local index = math.floor(step / SHADES_PER_TRANSITION) + 1
     local alpha = (step % SHADES_PER_TRANSITION) / SHADES_PER_TRANSITION
@@ -203,7 +203,7 @@ local function ghost(character, ownerId)
         end
     end
     model.Parent = ghostFolder
-    -- Keep only a faint same-color outline: the solid pastel body is the effect.
+    -- Keep only a faint same-color outline: the colored body is the effect.
     local light = Instance.new("Highlight")
     light.Name = "EnergyRim"
     light.Adornee = model
@@ -224,7 +224,7 @@ local function setActive(on)
     active = on
     local _, humanoid = characterParts()
     if on then
-        -- Always restart the snapshot gradient at pastel green on activation.
+        -- Always restart the snapshot gradient at green on activation.
         ghostSequences[player.UserId] = 0
         clearGhosts(player.UserId)
         elapsed = 0
@@ -558,5 +558,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V12 frozen rainbow trails loaded. X = toggle, K = settings menu.")
-
+print("KHASTIFY SANDEVISTAN V13 vivid rainbow trails loaded. X = toggle, K = settings menu.")
