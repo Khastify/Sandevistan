@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V14 - 30-FIGURE SEAMLESS RAINBOW + FIREBASE
+-- KHASTIFY SANDEVISTAN V15 - GREEN-BIASED 30-FIGURE RAINBOW + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -146,15 +146,21 @@ local RAINBOW_STOPS = {
     Color3.fromRGB(255, 240, 45), -- yellow
     Color3.fromRGB(30, 255, 75), -- back to green
 }
-local SHADES_PER_TRANSITION = 5 -- 6 transitions x 5 snapshots = 30 unique colors per loop
+-- Slightly favor the start of the cycle: one extra green-to-blue shade,
+-- one fewer yellow-to-green shade. All 30 figures still get unique colors.
+local TRANSITION_LENGTHS = {6, 5, 5, 5, 5, 4} -- total: 30
 local function nextGhostColor(ownerId)
     local sequence = ghostSequences[ownerId] or 0
     ghostSequences[ownerId] = sequence + 1
-    local total = 30 -- Figure 1 is green; figure 30 blends toward green; figure 31 is green again.
-    local step = sequence % total
-    local index = math.floor(step / SHADES_PER_TRANSITION) + 1
-    local alpha = (step % SHADES_PER_TRANSITION) / SHADES_PER_TRANSITION
-    return RAINBOW_STOPS[index]:Lerp(RAINBOW_STOPS[index + 1], alpha)
+    local step = sequence % 30
+    for index, length in ipairs(TRANSITION_LENGTHS) do
+        if step < length then
+            local alpha = step / length
+            return RAINBOW_STOPS[index]:Lerp(RAINBOW_STOPS[index + 1], alpha)
+        end
+        step = step - length
+    end
+    return RAINBOW_STOPS[1]
 end
 
 local function ghost(character, ownerId)
@@ -558,4 +564,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V13 vivid rainbow trails loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V15 green-biased 30-figure rainbow loaded. X = toggle, K = settings menu.")
