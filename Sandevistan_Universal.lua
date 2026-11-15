@@ -222,20 +222,42 @@ local remoteClocks = {}
 local firebaseReady = false
 local authToken, authUid, tokenExpires = nil, nil, 0
 local requestFunction = (syn and syn.request) or (http and http.request) or http_request or request
+local lastHttpWarning = {}
+local function httpError(label, detail)
+    local now = os.clock()
+    if not lastHttpWarning[label] or now - lastHttpWarning[label] >= 15 then
+        lastHttpWarning[label] = now
+        warn("KHAS Firebase " .. label .. ": " .. tostring(detail))
+    end
+end
 local function httpJson(method, url, payload)
     if type(requestFunction) ~= "function" then return nil, "HTTP request unavailable" end
-    local ok, response = pcall(requestFunction, {
+    local options = {
         Url = url, Method = method,
-        Headers = { ["Content-Type"] = "application/json" },
-        Body = payload and HttpService:JSONEncode(payload) or nil
-    })
-    if not ok or type(response) ~= "table" then return nil, tostring(response) end
-    local code = response.StatusCode or response.Status
-    if type(code) ~= "number" or code < 200 or code >= 300 then
-        return nil, "HTTP " .. tostring(code) .. " " .. tostring(response.Body or "")
+        Headers = { ["Content-Type"] = "application/json", ["Accept"] = "application/json" }
+    }
+    if payload ~= nil then options.Body = HttpService:JSONEncode(payload) end
+    local ok, response = pcall(requestFunction, options)
+    if not ok then return nil, "Request failed: " .. tostring(response) end
+    if type(response) ~= "table" then
+        return nil, "Unexpected response type " .. type(response) .. " (" .. tostring(response):sub(1, 180) .. ")"
     end
-    local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, response.Body or "null")
-    return decodedOk and decoded or nil, decodedOk and nil or "Invalid JSON"
+    local code = tonumber(response.StatusCode or response.Status or response.status_code)
+    local body = response.Body or response.body or response.ResponseBody
+    if type(body) ~= "string" then
+        return nil, "Missing/non-string response body (HTTP " .. tostring(code) .. "; body type " .. type(body) .. ")"
+    end
+    if code and (code < 200 or code >= 300) then
+        return nil, "HTTP " .. tostring(code) .. " body=" .. body:sub(1, 200)
+    end
+    if body == "" then
+        return nil, "Empty response body (HTTP " .. tostring(code) .. ")"
+    end
+    local decodedOk, decoded = pcall(function() return HttpService:JSONDecode(body) end)
+    if not decodedOk then
+        return nil, "Invalid JSON (HTTP " .. tostring(code) .. "; body=" .. body:sub(1, 180) .. ")"
+    end
+    return decoded, nil
 end
 local function authenticate()
     if authToken and os.time() < tokenExpires then return true end
@@ -265,14 +287,14 @@ local function publishStatus()
     local _, err = httpJson("PUT", recordUrl(authUid), {
         active = active, playerId = player.UserId, updatedAt = os.time()
     })
-    if err then warn("KHAS Firebase write: " .. err) end
+    if err then httpError("write", err) end
 end
 local function pollRemote()
     if not firebaseReady then return end
     local ok = authenticate()
     if not ok then return end
     local result, err = httpJson("GET", FIREBASE_DATABASE .. sessionPath() .. ".json?auth=" .. authToken)
-    if err then warn("KHAS Firebase read: " .. err); return end
+    if err then httpError("read", err); return end
     local nextActive = {}
     if type(result) == "table" then
         for uid, state in pairs(result) do
@@ -293,7 +315,7 @@ task.spawn(function()
         return
     end
     local ok, err = authenticate()
-    if not ok then warn("KHAS Firebase: " .. tostring(err)); return end
+    if not ok then httpError("auth", tostring(err)); return end
     firebaseReady = true
     publishStatus()
     while screenGui and screenGui.Parent do
@@ -508,4 +530,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V8 Firebase loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V8.1 Firebase diagnostics loaded. X = toggle, K = settings menu.")
