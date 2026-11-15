@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V4
+-- KHASTIFY SANDEVISTAN V5 - MULTIPLIER SPEED SCALING
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -13,7 +13,9 @@ local elapsed = 0
 local spawnClock = 0
 local originalSpeed = nil
 local originalFov = nil
-local selectedSpeed = 50
+local selectedMultiplier = 3.2
+local MIN_MULTIPLIER = 1
+local MAX_MULTIPLIER = 30
 local menuOpen = false
 local idleClock = 0
 local MAX_GHOSTS = 28
@@ -270,14 +272,14 @@ hint.Text = "X: Activate / Deactivate     K: Hide Menu"
 local dragging = false
 local function updateSlider(x)
     local ratio = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
-    selectedSpeed = math.floor(16 + ratio * 184 + 0.5)
-    caption.Text = "SANDEVISTAN SPEED: " .. selectedSpeed
+    selectedMultiplier = math.floor((MIN_MULTIPLIER * (MAX_MULTIPLIER / MIN_MULTIPLIER) ^ ratio) * 10 + 0.5) / 10
+    caption.Text = string.format("SANDEVISTAN SPEED: %.1fx (base %d)", selectedMultiplier, originalSpeed or 16)
     fill.Size = UDim2.fromScale(ratio, 1)
     handle.Position = UDim2.fromScale(ratio, 0.5)
 end
 local function refreshSlider()
-    local ratio = (selectedSpeed - 16) / 184
-    caption.Text = "SANDEVISTAN SPEED: " .. selectedSpeed
+    local ratio = math.log(selectedMultiplier / MIN_MULTIPLIER) / math.log(MAX_MULTIPLIER / MIN_MULTIPLIER)
+    caption.Text = string.format("SANDEVISTAN SPEED: %.1fx (base %d)", selectedMultiplier, originalSpeed or 16)
     fill.Size = UDim2.fromScale(ratio, 1)
     handle.Position = UDim2.fromScale(ratio, 0.5)
 end
@@ -351,7 +353,8 @@ RunService.RenderStepped:Connect(function(dt)
     elapsed += dt
     local character, humanoid, root = characterParts()
     if not character or not humanoid or not root then return end
-    local target = selectedSpeed
+    local target = (originalSpeed or 16) * selectedMultiplier
+    caption.Text = string.format("SANDEVISTAN SPEED: %.1fx (base %d)", selectedMultiplier, originalSpeed or 16)
     humanoid.WalkSpeed += (target - humanoid.WalkSpeed) * math.min(dt * 7, 1)
     local cam = workspace.CurrentCamera
     if cam then
