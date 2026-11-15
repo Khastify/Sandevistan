@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V15 - GREEN-BIASED 30-FIGURE RAINBOW + FIREBASE
+-- KHASTIFY SANDEVISTAN V17 - GREEN-BIASED 30-FIGURE RAINBOW + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -19,6 +19,51 @@ local MIN_MULTIPLIER = 1
 local MAX_MULTIPLIER = 40
 local menuOpen = false
 local idleClock = 0
+local autoDeactivateOnStop = false -- Optional setting, off by default.
+local hasMovedSinceActivation = false
+-- Save settings locally when the executor supports readfile/writefile.
+-- This is device/executor-local, not Roblox account cloud storage.
+local SETTINGS_FILE = "KHAS_Sandevistan_Settings.json"
+local canSaveSettings = type(readfile) == "function" and type(writefile) == "function"
+local saveRevision = 0
+local function saveSettings()
+    if not canSaveSettings then return end
+    saveRevision += 1
+    local revision = saveRevision
+    task.delay(0.35, function()
+        if revision ~= saveRevision then return end
+        local ok, err = pcall(function()
+            writefile(SETTINGS_FILE, HttpService:JSONEncode({
+                version = 1,
+                speedMultiplier = selectedMultiplier,
+                autoDeactivateOnStop = autoDeactivateOnStop
+            }))
+        end)
+        if not ok then warn("[KHAS] Could not save settings: " .. tostring(err)) end
+    end)
+end
+local function loadSettings()
+    if not canSaveSettings then
+        warn("[KHAS] Executor file functions unavailable; settings will reset after restart.")
+        return
+    end
+    local ok, data = pcall(function()
+        if type(isfile) == "function" and not isfile(SETTINGS_FILE) then return nil end
+        return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+    end)
+    if not ok then
+        -- Missing file is normal on first launch.
+        return
+    end
+    if type(data) ~= "table" then return end
+    if type(data.speedMultiplier) == "number" and data.speedMultiplier == data.speedMultiplier then
+        selectedMultiplier = math.clamp(data.speedMultiplier, MIN_MULTIPLIER, MAX_MULTIPLIER)
+    end
+    if type(data.autoDeactivateOnStop) == "boolean" then
+        autoDeactivateOnStop = data.autoDeactivateOnStop
+    end
+end
+loadSettings()
 local MAX_GHOSTS = 320 -- Performance safeguard: oldest snapshots are removed if this limit is reached.
 local ghostSequences = {} -- Separate color progression for each player
 local screenGui, flash, vignette, hudText, streakLayer
@@ -235,6 +280,8 @@ local function setActive(on)
         clearGhosts(player.UserId)
         elapsed = 0
         spawnClock = 0
+        idleClock = 0
+        hasMovedSinceActivation = false
         originalFov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70
         if humanoid then originalSpeed = humanoid.WalkSpeed end
         flashScreen(Color3.fromRGB(155,245,255))
@@ -392,8 +439,8 @@ end)
 -- Compact draggable-free settings panel, opened and closed with K.
 local menu = Instance.new("Frame")
 menu.Name = "Settings"
-menu.Size = UDim2.fromOffset(330, 174)
-menu.Position = UDim2.new(0.5, -165, 0.5, -87)
+menu.Size = UDim2.fromOffset(330, 224)
+menu.Position = UDim2.new(0.5, -165, 0.5, -112)
 menu.BackgroundColor3 = Color3.fromRGB(17, 15, 23)
 menu.BorderSizePixel = 0
 menu.Visible = false
@@ -441,12 +488,34 @@ handle.BorderSizePixel = 0
 Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
 local hint = Instance.new("TextLabel", menu)
 hint.BackgroundTransparency = 1
-hint.Position = UDim2.fromOffset(16, 122)
+hint.Position = UDim2.fromOffset(16, 172)
 hint.Size = UDim2.fromOffset(298, 35)
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 12
 hint.TextColor3 = Color3.fromRGB(170, 165, 185)
 hint.Text = "X: Activate / Deactivate     K: Hide Menu"
+-- Clickable auto-deactivate setting, persistent while this script is running.
+local autoToggle = Instance.new("TextButton")
+autoToggle.Name = "AutoDeactivateOnStop"
+autoToggle.Position = UDim2.fromOffset(16, 121)
+autoToggle.Size = UDim2.fromOffset(298, 38)
+autoToggle.BackgroundColor3 = Color3.fromRGB(40, 37, 52)
+autoToggle.BorderSizePixel = 0
+autoToggle.Font = Enum.Font.GothamSemibold
+autoToggle.TextSize = 13
+autoToggle.TextColor3 = Color3.fromRGB(235, 235, 245)
+Instance.new("UICorner", autoToggle).CornerRadius = UDim.new(0, 7)
+autoToggle.Parent = menu
+local function refreshAutoToggle()
+    autoToggle.Text = "Deactivate when stopping: " .. (autoDeactivateOnStop and "ON" or "OFF")
+    autoToggle.BackgroundColor3 = autoDeactivateOnStop and Color3.fromRGB(40, 95, 68) or Color3.fromRGB(40, 37, 52)
+end
+refreshAutoToggle()
+autoToggle.MouseButton1Click:Connect(function()
+    autoDeactivateOnStop = not autoDeactivateOnStop
+    refreshAutoToggle()
+    saveSettings()
+end)
 local dragging = false
 local function updateSlider(x)
     local ratio = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
@@ -454,6 +523,7 @@ local function updateSlider(x)
     caption.Text = string.format("SANDEVISTAN SPEED: %.1fx (base %d)", selectedMultiplier, originalSpeed or 16)
     fill.Size = UDim2.fromScale(ratio, 1)
     handle.Position = UDim2.fromScale(ratio, 0.5)
+    saveSettings()
 end
 local function refreshSlider()
     local ratio = math.log(selectedMultiplier / MIN_MULTIPLIER) / math.log(MAX_MULTIPLIER / MIN_MULTIPLIER)
@@ -517,6 +587,16 @@ RunService.RenderStepped:Connect(function(dt)
     elapsed += dt
     local character, humanoid, root = characterParts()
     if not character or not humanoid or not root then return end
+    -- Arm the stop detector only after movement begins; activating while
+    -- standing still should not instantly cancel the effect.
+    local moving = humanoid.MoveDirection.Magnitude > 0.1
+    if moving then
+        hasMovedSinceActivation = true
+    elseif autoDeactivateOnStop and hasMovedSinceActivation then
+        setActive(false)
+        task.spawn(publishStatus)
+        return
+    end
     local target = (originalSpeed or 16) * selectedMultiplier
     caption.Text = string.format("SANDEVISTAN SPEED: %.1fx (base %d)", selectedMultiplier, originalSpeed or 16)
     humanoid.WalkSpeed += (target - humanoid.WalkSpeed) * math.min(dt * 7, 1)
@@ -564,4 +644,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V15 green-biased 30-figure rainbow loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V17 auto-stop toggle + green-biased 30-figure rainbow loaded. X = toggle, K = settings menu.")
