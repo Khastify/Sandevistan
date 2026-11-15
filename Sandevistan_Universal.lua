@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V5 - MULTIPLIER SPEED SCALING
+-- KHASTIFY SANDEVISTAN V6 - MULTIPLIER SPEED SCALING
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -15,7 +15,7 @@ local originalSpeed = nil
 local originalFov = nil
 local selectedMultiplier = 3.2
 local MIN_MULTIPLIER = 1
-local MAX_MULTIPLIER = 30
+local MAX_MULTIPLIER = 40
 local menuOpen = false
 local idleClock = 0
 local MAX_GHOSTS = 28
@@ -48,7 +48,7 @@ local function colorAt(t)
         Color3.fromRGB(255,95,45),
         Color3.fromRGB(45,235,255)
     }
-    local period = 24
+    local period = 20
     local position = ((t % period) / period) * (#palette - 1)
     local i = math.floor(position) + 1
     return palette[i]:Lerp(palette[math.min(i+1,#palette)], position - math.floor(position))
