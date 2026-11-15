@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V11 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
+-- KHASTIFY SANDEVISTAN V12 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -135,7 +135,7 @@ local function clearGhosts(ownerId)
     end
 end
 
--- Every snapshot keeps its own fixed shade. Traverse the requested sequence
+-- Each solid-color snapshot keeps its own fixed shade. Traverse the requested sequence
 -- GREEN -> BLUE -> PURPLE -> RED -> ORANGE -> YELLOW -> GREEN, then repeat.
 local RAINBOW_STOPS = {
     Color3.fromRGB(150, 235, 174), -- pastel green (always first)
@@ -175,9 +175,9 @@ local function ghost(character, ownerId)
             clone.CanTouch = false
             clone.CanQuery = false
             clone.CastShadow = false
-            clone.Material = Enum.Material.Neon
+            clone.Material = Enum.Material.SmoothPlastic
             clone.Color = tint
-            clone.Transparency = 0.43
+            clone.Transparency = 0.12
             clone.Parent = model
             local mesh = part:FindFirstChildOfClass("SpecialMesh")
             if mesh then
@@ -193,24 +193,24 @@ local function ghost(character, ownerId)
                     meshClone.CanTouch = false
                     meshClone.CanQuery = false
                     meshClone.CastShadow = false
-                    meshClone.Material = Enum.Material.Neon
+                    meshClone.Material = Enum.Material.SmoothPlastic
                     meshClone.Color = tint
                     meshClone.TextureID = ""
-                    meshClone.Transparency = 0.43
+                    meshClone.Transparency = 0.12
                     meshClone.Parent = model
                 end
             end
         end
     end
     model.Parent = ghostFolder
-    -- A second, transparent highlight layer gives each ghost a luminous rim.
+    -- Keep only a faint same-color outline: the solid pastel body is the effect.
     local light = Instance.new("Highlight")
     light.Name = "EnergyRim"
     light.Adornee = model
     light.FillColor = tint
-    light.OutlineColor = tint:Lerp(Color3.new(1,1,1),0.55)
-    light.FillTransparency = 0.82
-    light.OutlineTransparency = 0.28
+    light.OutlineColor = tint
+    light.FillTransparency = 1
+    light.OutlineTransparency = 0.75
     light.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     light.Parent = model
     table.insert(ghosts, {model=model, ownerId=ownerId})
@@ -558,5 +558,5 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V11 frozen rainbow trails loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V12 frozen rainbow trails loaded. X = toggle, K = settings menu.")
 
