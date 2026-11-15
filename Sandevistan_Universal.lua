@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V10 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
+-- KHASTIFY SANDEVISTAN V11 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -138,13 +138,13 @@ end
 -- Every snapshot keeps its own fixed shade. Traverse the requested sequence
 -- GREEN -> BLUE -> PURPLE -> RED -> ORANGE -> YELLOW -> GREEN, then repeat.
 local RAINBOW_STOPS = {
-    Color3.fromRGB(30, 255, 75),    -- green
-    Color3.fromRGB(25, 110, 255),   -- blue
-    Color3.fromRGB(155, 50, 255),   -- purple
-    Color3.fromRGB(255, 45, 70),    -- red
-    Color3.fromRGB(255, 135, 30),   -- orange
-    Color3.fromRGB(255, 240, 45),   -- yellow
-    Color3.fromRGB(30, 255, 75),    -- back to green
+    Color3.fromRGB(150, 235, 174), -- pastel green (always first)
+    Color3.fromRGB(150, 196, 245), -- pastel blue
+    Color3.fromRGB(196, 164, 242), -- pastel purple
+    Color3.fromRGB(248, 159, 174), -- pastel red / rose
+    Color3.fromRGB(250, 195, 151), -- pastel orange / peach
+    Color3.fromRGB(251, 239, 165), -- pastel yellow
+    Color3.fromRGB(150, 235, 174), -- back to pastel green
 }
 local SHADES_PER_TRANSITION = 24
 local function nextGhostColor(ownerId)
@@ -224,6 +224,9 @@ local function setActive(on)
     active = on
     local _, humanoid = characterParts()
     if on then
+        -- Always restart the snapshot gradient at pastel green on activation.
+        ghostSequences[player.UserId] = 0
+        clearGhosts(player.UserId)
         elapsed = 0
         spawnClock = 0
         originalFov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70
@@ -555,5 +558,5 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V10 frozen rainbow trails loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V11 frozen rainbow trails loaded. X = toggle, K = settings menu.")
 
