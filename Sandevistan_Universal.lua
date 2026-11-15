@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V6 - MULTIPLIER SPEED SCALING
+-- KHASTIFY SANDEVISTAN V9 - PERSISTENT RAINBOW TRAILS + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -19,8 +19,8 @@ local MIN_MULTIPLIER = 1
 local MAX_MULTIPLIER = 40
 local menuOpen = false
 local idleClock = 0
-local MAX_GHOSTS = 65
-local GHOST_LIFETIME = 0.72
+local MAX_GHOSTS = 320 -- Performance safeguard: oldest snapshots are removed if this limit is reached.
+local ghostSequence = 0
 local screenGui, flash, vignette, hudText, streakLayer
 local lastPos = nil
 local ghosts = {}
@@ -125,7 +125,24 @@ local function flashScreen(tint)
     flash.BackgroundTransparency = 0.26
 end
 
-local function ghost(character, tint)
+local function clearGhosts(ownerId)
+    for i = #ghosts, 1, -1 do
+        local g = ghosts[i]
+        if ownerId == nil or g.ownerId == ownerId then
+            if g.model then g.model:Destroy() end
+            table.remove(ghosts, i)
+        end
+    end
+end
+
+local function nextGhostColor()
+    ghostSequence += 1
+    -- Every successive snapshot advances by a small, visible hue step.
+    return Color3.fromHSV((ghostSequence * 0.023) % 1, 0.85, 1)
+end
+
+local function ghost(character, ownerId)
+    local tint = nextGhostColor()
     local model = Instance.new("Model")
     model.Name = "SandyAfterimage"
     -- Capture each visible part's current world pose. This avoids moving
@@ -180,7 +197,7 @@ local function ghost(character, tint)
     light.OutlineTransparency = 0.28
     light.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     light.Parent = model
-    table.insert(ghosts, {model=model, born=os.clock()})
+    table.insert(ghosts, {model=model, ownerId=ownerId})
     if #ghosts > MAX_GHOSTS then
         local oldest = table.remove(ghosts,1)
         oldest.model:Destroy()
@@ -202,6 +219,7 @@ local function setActive(on)
         cc.Saturation = 0.1
         blur.Size = 10
     else
+        clearGhosts(player.UserId)
         if humanoid and originalSpeed then humanoid.WalkSpeed = originalSpeed end
         cc.Enabled = false
         blur.Size = 0
@@ -306,6 +324,9 @@ local function pollRemote()
             end
         end
     end
+    for userId in pairs(remoteActive) do
+        if not nextActive[userId] then clearGhosts(userId) end
+    end
     remoteActive = nextActive
 end
 -- HTTP operations run outside RenderStepped, so network latency does not stall rendering.
@@ -334,7 +355,7 @@ RunService.RenderStepped:Connect(function(dt)
         local char = other and other.Character
         if char then
             remoteClocks[userId] = (remoteClocks[userId] or 0) + 0.11
-            ghost(char, colorAt(os.clock()))
+            ghost(char, userId)
         end
     end
 end)
@@ -439,6 +460,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 player.CharacterAdded:Connect(function()
     active = false
+    clearGhosts(player.UserId)
     task.spawn(publishStatus)
     originalSpeed = nil
     cc.Enabled = false
@@ -446,25 +468,7 @@ player.CharacterAdded:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function(dt)
-    local now = os.clock()
-    for i = #ghosts, 1, -1 do
-        local g = ghosts[i]
-        local age = now - g.born
-        if age >= GHOST_LIFETIME then
-            g.model:Destroy()
-            table.remove(ghosts, i)
-        else
-            local transparency = 0.43 + (age / GHOST_LIFETIME) * 0.57
-            local highlight = g.model:FindFirstChild("EnergyRim")
-            if highlight then
-                highlight.OutlineTransparency = 0.28 + 0.72 * (age/GHOST_LIFETIME)
-                highlight.FillTransparency = 0.82 + 0.18 * (age/GHOST_LIFETIME)
-            end
-            for _, part in ipairs(g.model:GetChildren()) do
-                if part:IsA("BasePart") then part.Transparency = transparency end
-            end
-        end
-    end
+    -- Persistent snapshots do not fade. They remain until their owner deactivates.
     if flash then flash.BackgroundTransparency = math.min(1,flash.BackgroundTransparency + dt*3.6) end
     local tint = colorAt(elapsed)
     if vignette then
@@ -498,7 +502,7 @@ RunService.RenderStepped:Connect(function(dt)
         idleClock += dt
         if idleClock >= 0.15 then
             idleClock = 0
-            ghost(character, tint)
+            ghost(character, player.UserId)
         end
     else
         idleClock = 0
@@ -508,7 +512,7 @@ RunService.RenderStepped:Connect(function(dt)
         local interval = 0.045
         if spawnClock >= interval then
             spawnClock = 0
-            ghost(character, tint)
+            ghost(character, player.UserId)
             -- Short-lived HUD streaks reinforce velocity without obscuring the view.
             if math.random() < 0.35 then
                 local line = Instance.new("Frame")
@@ -530,4 +534,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V8.1 Firebase diagnostics loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V9 persistent rainbow trails loaded. X = toggle, K = settings menu.")
