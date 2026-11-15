@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local Debris = game:GetService("Debris")
+local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local active = false
 local elapsed = 0
@@ -18,7 +19,7 @@ local MIN_MULTIPLIER = 1
 local MAX_MULTIPLIER = 40
 local menuOpen = false
 local idleClock = 0
-local MAX_GHOSTS = 28
+local MAX_GHOSTS = 65
 local GHOST_LIFETIME = 0.72
 local screenGui, flash, vignette, hudText, streakLayer
 local lastPos = nil
@@ -211,6 +212,111 @@ local function setActive(on)
     end
 end
 
+-- KHAS V8: optional Firebase synchronization. Only participants running V8 see remote ghosts.
+-- Set the Firebase Web API key from Project Settings > Your apps > Web app > apiKey.
+-- This key identifies the Firebase project; it is NOT a service-account secret.
+local FIREBASE_DATABASE = "https://khas-relay-default-rtdb.firebaseio.com"
+local FIREBASE_API_KEY = "AIzaSyDra6gVAscHi15iq5kfDNYWfQZBOnNfaKA"
+local remoteActive = {}
+local remoteClocks = {}
+local firebaseReady = false
+local authToken, authUid, tokenExpires = nil, nil, 0
+local requestFunction = (syn and syn.request) or (http and http.request) or http_request or request
+local function httpJson(method, url, payload)
+    if type(requestFunction) ~= "function" then return nil, "HTTP request unavailable" end
+    local ok, response = pcall(requestFunction, {
+        Url = url, Method = method,
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = payload and HttpService:JSONEncode(payload) or nil
+    })
+    if not ok or type(response) ~= "table" then return nil, tostring(response) end
+    local code = response.StatusCode or response.Status
+    if type(code) ~= "number" or code < 200 or code >= 300 then
+        return nil, "HTTP " .. tostring(code) .. " " .. tostring(response.Body or "")
+    end
+    local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, response.Body or "null")
+    return decodedOk and decoded or nil, decodedOk and nil or "Invalid JSON"
+end
+local function authenticate()
+    if authToken and os.time() < tokenExpires then return true end
+    if FIREBASE_API_KEY == "PASTE_FIREBASE_WEB_API_KEY_HERE" then
+        return false, "Set FIREBASE_API_KEY before running multiplayer"
+    end
+    -- Sign up anonymously. Reauthenticate after expiry; old records age out automatically.
+    local result, err = httpJson("POST",
+        "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" .. FIREBASE_API_KEY,
+        {returnSecureToken = true})
+    if not result or not result.idToken or not result.localId then return false, err end
+    authToken, authUid = result.idToken, result.localId
+    tokenExpires = os.time() + (tonumber(result.expiresIn) or 3600) - 120
+    return true
+end
+local function sessionPath()
+    -- JobId separates individual Roblox servers, including different places.
+    return "/sessions/" .. tostring(game.PlaceId) .. "_" .. tostring(game.JobId):gsub("[^%w_-]", "_")
+end
+local function recordUrl(uid)
+    return FIREBASE_DATABASE .. sessionPath() .. "/" .. uid .. ".json?auth=" .. authToken
+end
+local function publishStatus()
+    if not firebaseReady then return end
+    local ok = authenticate()
+    if not ok then return end
+    local _, err = httpJson("PUT", recordUrl(authUid), {
+        active = active, playerId = player.UserId, updatedAt = os.time()
+    })
+    if err then warn("KHAS Firebase write: " .. err) end
+end
+local function pollRemote()
+    if not firebaseReady then return end
+    local ok = authenticate()
+    if not ok then return end
+    local result, err = httpJson("GET", FIREBASE_DATABASE .. sessionPath() .. ".json?auth=" .. authToken)
+    if err then warn("KHAS Firebase read: " .. err); return end
+    local nextActive = {}
+    if type(result) == "table" then
+        for uid, state in pairs(result) do
+            if uid ~= authUid and type(state) == "table" and state.active == true
+                and type(state.playerId) == "number" and type(state.updatedAt) == "number"
+                and math.abs(os.time() - state.updatedAt) <= 12 then
+                local other = Players:GetPlayerByUserId(state.playerId)
+                if other and other ~= player then nextActive[state.playerId] = true end
+            end
+        end
+    end
+    remoteActive = nextActive
+end
+-- HTTP operations run outside RenderStepped, so network latency does not stall rendering.
+task.spawn(function()
+    if type(requestFunction) ~= "function" then
+        warn("KHAS Firebase: executor does not expose a compatible request function")
+        return
+    end
+    local ok, err = authenticate()
+    if not ok then warn("KHAS Firebase: " .. tostring(err)); return end
+    firebaseReady = true
+    publishStatus()
+    while screenGui and screenGui.Parent do
+        publishStatus()
+        pollRemote()
+        task.wait(2)
+    end
+end)
+local remoteTime = 0
+RunService.RenderStepped:Connect(function(dt)
+    remoteTime += dt
+    if remoteTime < 0.11 then return end
+    remoteTime = 0
+    for userId in pairs(remoteActive) do
+        local other = Players:GetPlayerByUserId(userId)
+        local char = other and other.Character
+        if char then
+            remoteClocks[userId] = (remoteClocks[userId] or 0) + 0.11
+            ghost(char, colorAt(os.clock()))
+        end
+    end
+end)
+
 -- Compact draggable-free settings panel, opened and closed with K.
 local menu = Instance.new("Frame")
 menu.Name = "Settings"
@@ -303,6 +409,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.X then
         setActive(not active)
+        task.spawn(publishStatus)
     elseif input.KeyCode == Enum.KeyCode.K then
         menuOpen = not menuOpen
         menu.Visible = menuOpen
@@ -310,6 +417,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 player.CharacterAdded:Connect(function()
     active = false
+    task.spawn(publishStatus)
     originalSpeed = nil
     cc.Enabled = false
     blur.Size = 0
@@ -400,4 +508,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V4 loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V8 Firebase loaded. X = toggle, K = settings menu.")
