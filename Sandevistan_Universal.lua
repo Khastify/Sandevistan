@@ -1,6 +1,6 @@
--- KHASTIFY SANDEVISTAN V3
+-- KHASTIFY SANDEVISTAN V4
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
--- X: toggle; LeftShift: burst while active.
+-- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,7 +13,9 @@ local elapsed = 0
 local spawnClock = 0
 local originalSpeed = nil
 local originalFov = nil
-local burst = false
+local selectedSpeed = 50
+local menuOpen = false
+local idleClock = 0
 local MAX_GHOSTS = 28
 local GHOST_LIFETIME = 0.72
 local screenGui, flash, vignette, hudText, streakLayer
@@ -59,10 +61,10 @@ end
 
 local function buildScreen()
     local pg = player:WaitForChild("PlayerGui")
-    local old = pg:FindFirstChild("KhastifySandyV3")
+    local old = pg:FindFirstChild("KhastifySandyV4")
     if old then old:Destroy() end
     screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "KhastifySandyV3"
+    screenGui.Name = "KhastifySandyV4"
     screenGui.IgnoreGuiInset = true
     screenGui.ResetOnSpawn = false
     screenGui.DisplayOrder = 100
@@ -203,21 +205,106 @@ local function setActive(on)
         if workspace.CurrentCamera and originalFov then
             workspace.CurrentCamera.FieldOfView = originalFov
         end
-        burst = false
         flashScreen(Color3.fromRGB(255,75,125))
     end
 end
 
+-- Compact draggable-free settings panel, opened and closed with K.
+local menu = Instance.new("Frame")
+menu.Name = "Settings"
+menu.Size = UDim2.fromOffset(330, 174)
+menu.Position = UDim2.new(0.5, -165, 0.5, -87)
+menu.BackgroundColor3 = Color3.fromRGB(17, 15, 23)
+menu.BorderSizePixel = 0
+menu.Visible = false
+menu.Parent = screenGui
+local corner = Instance.new("UICorner", menu)
+corner.CornerRadius = UDim.new(0, 10)
+local stroke = Instance.new("UIStroke", menu)
+stroke.Color = Color3.fromRGB(255, 62, 105)
+stroke.Thickness = 2
+local title = Instance.new("TextLabel", menu)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(16, 12)
+title.Size = UDim2.fromOffset(298, 32)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.fromRGB(255, 100, 140)
+title.Text = "KHASTIFY // SANDEVISTAN"
+local caption = Instance.new("TextLabel", menu)
+caption.BackgroundTransparency = 1
+caption.Position = UDim2.fromOffset(16, 49)
+caption.Size = UDim2.fromOffset(298, 23)
+caption.Font = Enum.Font.Gotham
+caption.TextSize = 14
+caption.TextXAlignment = Enum.TextXAlignment.Left
+caption.TextColor3 = Color3.fromRGB(230, 230, 240)
+local track = Instance.new("Frame", menu)
+track.Position = UDim2.fromOffset(20, 93)
+track.Size = UDim2.fromOffset(290, 9)
+track.BackgroundColor3 = Color3.fromRGB(65, 61, 76)
+track.BorderSizePixel = 0
+Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+local fill = Instance.new("Frame", track)
+fill.Size = UDim2.fromScale(0, 1)
+fill.BackgroundColor3 = Color3.fromRGB(255, 70, 110)
+fill.BorderSizePixel = 0
+Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+local handle = Instance.new("TextButton", track)
+handle.Size = UDim2.fromOffset(20, 20)
+handle.AnchorPoint = Vector2.new(0.5, 0.5)
+handle.Position = UDim2.fromScale(0, 0.5)
+handle.BackgroundColor3 = Color3.fromRGB(255, 155, 175)
+handle.Text = ""
+handle.BorderSizePixel = 0
+Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
+local hint = Instance.new("TextLabel", menu)
+hint.BackgroundTransparency = 1
+hint.Position = UDim2.fromOffset(16, 122)
+hint.Size = UDim2.fromOffset(298, 35)
+hint.Font = Enum.Font.Gotham
+hint.TextSize = 12
+hint.TextColor3 = Color3.fromRGB(170, 165, 185)
+hint.Text = "X: Activate / Deactivate     K: Hide Menu"
+local dragging = false
+local function updateSlider(x)
+    local ratio = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+    selectedSpeed = math.floor(16 + ratio * 184 + 0.5)
+    caption.Text = "SANDEVISTAN SPEED: " .. selectedSpeed
+    fill.Size = UDim2.fromScale(ratio, 1)
+    handle.Position = UDim2.fromScale(ratio, 0.5)
+end
+local function refreshSlider()
+    local ratio = (selectedSpeed - 16) / 184
+    caption.Text = "SANDEVISTAN SPEED: " .. selectedSpeed
+    fill.Size = UDim2.fromScale(ratio, 1)
+    handle.Position = UDim2.fromScale(ratio, 0.5)
+end
+refreshSlider()
+handle.MouseButton1Down:Connect(function() dragging = true end)
+track.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        updateSlider(input.Position.X)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        updateSlider(input.Position.X)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.X then
         setActive(not active)
-    elseif input.KeyCode == Enum.KeyCode.LeftShift then
-        burst = true
+    elseif input.KeyCode == Enum.KeyCode.K then
+        menuOpen = not menuOpen
+        menu.Visible = menuOpen
     end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.LeftShift then burst = false end
 end)
 player.CharacterAdded:Connect(function()
     active = false
@@ -264,24 +351,33 @@ RunService.RenderStepped:Connect(function(dt)
     elapsed += dt
     local character, humanoid, root = characterParts()
     if not character or not humanoid or not root then return end
-    local target = (originalSpeed or 16) * (burst and 5 or 3.2)
+    local target = selectedSpeed
     humanoid.WalkSpeed += (target - humanoid.WalkSpeed) * math.min(dt * 7, 1)
     local cam = workspace.CurrentCamera
     if cam then
-        local fov = (originalFov or 70) + (burst and 22 or 12)
+        local fov = (originalFov or 70) + 12
         cam.FieldOfView += (fov - cam.FieldOfView) * math.min(dt * 6, 1)
     end
     blur.Size = math.max(0, blur.Size - dt * 26)
     tint = colorAt(elapsed)
     cc.TintColor = Color3.new(1,1,1):Lerp(tint, 0.12)
+    if humanoid.MoveDirection.Magnitude <= 0.1 then
+        idleClock += dt
+        if idleClock >= 0.15 then
+            idleClock = 0
+            ghost(character, tint)
+        end
+    else
+        idleClock = 0
+    end
     if humanoid.MoveDirection.Magnitude > 0.1 then
         spawnClock += dt
-        local interval = burst and 0.028 or 0.05
+        local interval = 0.045
         if spawnClock >= interval then
             spawnClock = 0
             ghost(character, tint)
             -- Short-lived HUD streaks reinforce velocity without obscuring the view.
-            if math.random() < (burst and 0.65 or 0.27) then
+            if math.random() < 0.35 then
                 local line = Instance.new("Frame")
                 line.BorderSizePixel = 0
                 line.BackgroundColor3 = tint
@@ -301,4 +397,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY'S SANDEVISTAN loaded. X = toggle")
+print("KHASTIFY SANDEVISTAN V4 loaded. X = toggle, K = settings menu.")
