@@ -1,4 +1,4 @@
--- KHASTIFY SANDEVISTAN V9 - PERSISTENT RAINBOW TRAILS + FIREBASE
+-- KHASTIFY SANDEVISTAN V10 - FROZEN EDGERUNNERS GRADIENT + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
 -- X: toggle; K: settings menu. No Shift speed boost.
 -- Other players will not necessarily see these local effects.
@@ -20,7 +20,7 @@ local MAX_MULTIPLIER = 40
 local menuOpen = false
 local idleClock = 0
 local MAX_GHOSTS = 320 -- Performance safeguard: oldest snapshots are removed if this limit is reached.
-local ghostSequence = 0
+local ghostSequences = {} -- Separate color progression for each player
 local screenGui, flash, vignette, hudText, streakLayer
 local lastPos = nil
 local ghosts = {}
@@ -135,14 +135,30 @@ local function clearGhosts(ownerId)
     end
 end
 
-local function nextGhostColor()
-    ghostSequence += 1
-    -- Every successive snapshot advances by a small, visible hue step.
-    return Color3.fromHSV((ghostSequence * 0.023) % 1, 0.85, 1)
+-- Every snapshot keeps its own fixed shade. Traverse the requested sequence
+-- GREEN -> BLUE -> PURPLE -> RED -> ORANGE -> YELLOW -> GREEN, then repeat.
+local RAINBOW_STOPS = {
+    Color3.fromRGB(30, 255, 75),    -- green
+    Color3.fromRGB(25, 110, 255),   -- blue
+    Color3.fromRGB(155, 50, 255),   -- purple
+    Color3.fromRGB(255, 45, 70),    -- red
+    Color3.fromRGB(255, 135, 30),   -- orange
+    Color3.fromRGB(255, 240, 45),   -- yellow
+    Color3.fromRGB(30, 255, 75),    -- back to green
+}
+local SHADES_PER_TRANSITION = 24
+local function nextGhostColor(ownerId)
+    local sequence = ghostSequences[ownerId] or 0
+    ghostSequences[ownerId] = sequence + 1
+    local total = (#RAINBOW_STOPS - 1) * SHADES_PER_TRANSITION
+    local step = sequence % total
+    local index = math.floor(step / SHADES_PER_TRANSITION) + 1
+    local alpha = (step % SHADES_PER_TRANSITION) / SHADES_PER_TRANSITION
+    return RAINBOW_STOPS[index]:Lerp(RAINBOW_STOPS[index + 1], alpha)
 end
 
 local function ghost(character, ownerId)
-    local tint = nextGhostColor()
+    local tint = nextGhostColor(ownerId)
     local model = Instance.new("Model")
     model.Name = "SandyAfterimage"
     -- Capture each visible part's current world pose. This avoids moving
@@ -220,6 +236,7 @@ local function setActive(on)
         blur.Size = 10
     else
         clearGhosts(player.UserId)
+        ghostSequences[player.UserId] = nil
         if humanoid and originalSpeed then humanoid.WalkSpeed = originalSpeed end
         cc.Enabled = false
         blur.Size = 0
@@ -325,7 +342,10 @@ local function pollRemote()
         end
     end
     for userId in pairs(remoteActive) do
-        if not nextActive[userId] then clearGhosts(userId) end
+        if not nextActive[userId] then
+            clearGhosts(userId)
+            ghostSequences[userId] = nil
+        end
     end
     remoteActive = nextActive
 end
@@ -461,6 +481,7 @@ end)
 player.CharacterAdded:Connect(function()
     active = false
     clearGhosts(player.UserId)
+    ghostSequences[player.UserId] = nil
     task.spawn(publishStatus)
     originalSpeed = nil
     cc.Enabled = false
@@ -534,4 +555,5 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V9 persistent rainbow trails loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V10 frozen rainbow trails loaded. X = toggle, K = settings menu.")
+
