@@ -1,6 +1,6 @@
--- KHASTIFY SANDEVISTAN V17 - GREEN-BIASED 30-FIGURE RAINBOW + FIREBASE
+-- KHASTIFY SANDEVISTAN V18 - GREEN-BIASED 30-FIGURE RAINBOW + FIREBASE
 -- Client-side cinematic effects for standard Roblox humanoid avatars.
--- X: toggle; K: settings menu. No Shift speed boost.
+-- X: toggle; configurable settings-menu hotkey (default K).
 -- Other players will not necessarily see these local effects.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -21,6 +21,8 @@ local menuOpen = false
 local idleClock = 0
 local autoDeactivateOnStop = false -- Optional setting, off by default.
 local hasMovedSinceActivation = false
+local menuHotkey = Enum.KeyCode.K
+local savedMenuPosition = nil
 -- Save settings locally when the executor supports readfile/writefile.
 -- This is device/executor-local, not Roblox account cloud storage.
 local SETTINGS_FILE = "KHAS_Sandevistan_Settings.json"
@@ -34,7 +36,9 @@ local function saveSettings()
         if revision ~= saveRevision then return end
         local ok, err = pcall(function()
             writefile(SETTINGS_FILE, HttpService:JSONEncode({
-                version = 1,
+                version = 2,
+                menuHotkey = menuHotkey.Name,
+                menuPosition = savedMenuPosition,
                 speedMultiplier = selectedMultiplier,
                 autoDeactivateOnStop = autoDeactivateOnStop
             }))
@@ -58,6 +62,15 @@ local function loadSettings()
     if type(data) ~= "table" then return end
     if type(data.speedMultiplier) == "number" and data.speedMultiplier == data.speedMultiplier then
         selectedMultiplier = math.clamp(data.speedMultiplier, MIN_MULTIPLIER, MAX_MULTIPLIER)
+    end
+    if type(data.menuHotkey) == "string" then
+        local key = Enum.KeyCode[data.menuHotkey]
+        if key and key ~= Enum.KeyCode.Unknown and key ~= Enum.KeyCode.X then menuHotkey = key end
+    end
+    if type(data.menuPosition) == "table" and type(data.menuPosition.x) == "number" and type(data.menuPosition.y) == "number" then
+        if data.menuPosition.x == data.menuPosition.x and data.menuPosition.y == data.menuPosition.y then
+            savedMenuPosition = {x = math.clamp(data.menuPosition.x, 0, 1), y = math.clamp(data.menuPosition.y, 0, 1)}
+        end
     end
     if type(data.autoDeactivateOnStop) == "boolean" then
         autoDeactivateOnStop = data.autoDeactivateOnStop
@@ -436,11 +449,11 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- Compact draggable-free settings panel, opened and closed with K.
+-- Draggable settings panel with saved hotkey and screen position.
 local menu = Instance.new("Frame")
 menu.Name = "Settings"
-menu.Size = UDim2.fromOffset(330, 224)
-menu.Position = UDim2.new(0.5, -165, 0.5, -112)
+menu.Size = UDim2.fromOffset(330, 286)
+menu.Position = UDim2.new(0.5, -165, 0.5, -143)
 menu.BackgroundColor3 = Color3.fromRGB(17, 15, 23)
 menu.BorderSizePixel = 0
 menu.Visible = false
@@ -488,12 +501,12 @@ handle.BorderSizePixel = 0
 Instance.new("UICorner", handle).CornerRadius = UDim.new(1, 0)
 local hint = Instance.new("TextLabel", menu)
 hint.BackgroundTransparency = 1
-hint.Position = UDim2.fromOffset(16, 172)
+hint.Position = UDim2.fromOffset(16, 238)
 hint.Size = UDim2.fromOffset(298, 35)
 hint.Font = Enum.Font.Gotham
 hint.TextSize = 12
 hint.TextColor3 = Color3.fromRGB(170, 165, 185)
-hint.Text = "X: Activate / Deactivate     K: Hide Menu"
+hint.Text = "X: Activate / Deactivate"
 -- Clickable auto-deactivate setting, persistent while this script is running.
 local autoToggle = Instance.new("TextButton")
 autoToggle.Name = "AutoDeactivateOnStop"
@@ -515,6 +528,75 @@ autoToggle.MouseButton1Click:Connect(function()
     autoDeactivateOnStop = not autoDeactivateOnStop
     refreshAutoToggle()
     saveSettings()
+end)
+-- Click to rebind the menu hotkey. Escape cancels; X remains reserved for activation.
+local hotkeyButton = Instance.new("TextButton")
+hotkeyButton.Name = "MenuHotkey"
+hotkeyButton.Position = UDim2.fromOffset(16, 174)
+hotkeyButton.Size = UDim2.fromOffset(298, 40)
+hotkeyButton.BackgroundColor3 = Color3.fromRGB(40, 37, 52)
+hotkeyButton.BorderSizePixel = 0
+hotkeyButton.Font = Enum.Font.GothamSemibold
+hotkeyButton.TextSize = 13
+hotkeyButton.TextColor3 = Color3.fromRGB(235, 235, 245)
+hotkeyButton.Parent = menu
+Instance.new("UICorner", hotkeyButton).CornerRadius = UDim.new(0, 7)
+local waitingForHotkey = false
+local function refreshHotkey()
+    hotkeyButton.Text = waitingForHotkey and "Press a key (Esc to cancel)..." or ("Menu hotkey: " .. menuHotkey.Name .. "  [Change]")
+    hint.Text = "X: Activate / Deactivate     " .. menuHotkey.Name .. ": Hide Menu"
+end
+refreshHotkey()
+hotkeyButton.MouseButton1Click:Connect(function()
+    waitingForHotkey = true
+    refreshHotkey()
+end)
+
+-- Drag the title bar; save normalized position so it works at different resolutions.
+local dragBar = Instance.new("TextButton")
+dragBar.Name = "DragBar"
+dragBar.BackgroundTransparency = 1
+dragBar.Text = ""
+dragBar.Position = UDim2.fromOffset(0, 0)
+dragBar.Size = UDim2.new(1, 0, 0, 44)
+dragBar.Parent = menu
+local movingMenu = false
+local menuDragStart, menuStartPos, menuDragType
+local function clampMenuToViewport(pixelX, pixelY)
+    local viewport = screenGui.AbsoluteSize
+    local maxX = math.max(0, viewport.X - menu.AbsoluteSize.X)
+    local maxY = math.max(0, viewport.Y - menu.AbsoluteSize.Y)
+    local x, y = math.clamp(pixelX, 0, maxX), math.clamp(pixelY, 0, maxY)
+    menu.Position = UDim2.fromOffset(x, y)
+    savedMenuPosition = {x = maxX > 0 and x / maxX or 0, y = maxY > 0 and y / maxY or 0}
+end
+local function restoreMenuPosition()
+    if not savedMenuPosition then return end
+    local viewport = screenGui.AbsoluteSize
+    clampMenuToViewport(savedMenuPosition.x * math.max(0, viewport.X - menu.AbsoluteSize.X), savedMenuPosition.y * math.max(0, viewport.Y - menu.AbsoluteSize.Y))
+end
+if savedMenuPosition then task.defer(restoreMenuPosition) end
+dragBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        movingMenu = true
+        menuDragType = input.UserInputType
+        menuDragStart = input.Position
+        menuStartPos = menu.AbsolutePosition
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if not movingMenu then return end
+    if (menuDragType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseMovement)
+        or (menuDragType == Enum.UserInputType.Touch and input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - menuDragStart
+        clampMenuToViewport(menuStartPos.X + delta.X, menuStartPos.Y + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if movingMenu and input.UserInputType == menuDragType then
+        movingMenu = false
+        saveSettings()
+    end
 end)
 local dragging = false
 local function updateSlider(x)
@@ -548,11 +630,27 @@ UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
 end)
 UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
+    if waitingForHotkey then
+        if input.KeyCode == Enum.KeyCode.Escape then
+            waitingForHotkey = false
+            refreshHotkey()
+        elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode ~= Enum.KeyCode.Unknown then
+            if input.KeyCode ~= Enum.KeyCode.X then
+                menuHotkey = input.KeyCode
+                waitingForHotkey = false
+                refreshHotkey()
+                saveSettings()
+            else
+                hotkeyButton.Text = "X is reserved. Choose another key."
+            end
+        end
+        return
+    end
+    if processed or UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode == Enum.KeyCode.X then
         setActive(not active)
         task.spawn(publishStatus)
-    elseif input.KeyCode == Enum.KeyCode.K then
+    elseif input.KeyCode == menuHotkey then
         menuOpen = not menuOpen
         menu.Visible = menuOpen
     end
@@ -644,4 +742,4 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 end)
-print("KHASTIFY SANDEVISTAN V17 auto-stop toggle + green-biased 30-figure rainbow loaded. X = toggle, K = settings menu.")
+print("KHASTIFY SANDEVISTAN V18 auto-stop toggle + green-biased 30-figure rainbow loaded. X = toggle, K = settings menu.")
